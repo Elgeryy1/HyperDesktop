@@ -107,6 +107,8 @@ Acceso desde otro PC (LAN):
 - [Variables de entorno](./docs/env-vars.md)
 - [Libvirt/QEMU](./docs/libvirt-qemu.md)
 - [Roadmap produccion](./docs/production-roadmap.md)
+- [Release notes v0.1.0](./docs/releases/v0.1.0.md)
+- [Changelog](./CHANGELOG.md)
 
 ## Credenciales iniciales (seed)
 
