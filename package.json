@@ -1,0 +1,19 @@
+{
+  "name": "hyperdesk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "HyperDesk monorepo",
+  "packageManager": "npm@11.9.0",
+  "scripts": {
+    "dev:api": "npm --prefix apps/api run dev",
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:api": "npm --prefix apps/api run build",
+    "build:web": "npm --prefix apps/web run build",
+    "lint:api": "npm --prefix apps/api run lint",
+    "lint:web": "npm --prefix apps/web run lint",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "stack:up": "powershell -ExecutionPolicy Bypass -File ./start-hyperdesk.ps1",
+    "stack:down": "powershell -ExecutionPolicy Bypass -File ./stop-hyperdesk.ps1"
+  }
+}

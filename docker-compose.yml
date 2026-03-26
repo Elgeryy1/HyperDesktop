@@ -1,0 +1,112 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hyperdesk-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - hyperdesk-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./apps/api
+    container_name: hyperdesk-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mock-vnc:
+        condition: service_started
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      NODE_OPTIONS: ${API_NODE_OPTIONS}
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES: ${JWT_ACCESS_EXPIRES}
+      JWT_REFRESH_EXPIRES: ${JWT_REFRESH_EXPIRES}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      HYPERVISOR_PROVIDER: ${HYPERVISOR_PROVIDER}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      ISO_UPLOAD_DIR: ${ISO_UPLOAD_DIR}
+      ISO_MAX_SIZE_MB: ${ISO_MAX_SIZE_MB}
+      API_REQUEST_TIMEOUT_MS: ${API_REQUEST_TIMEOUT_MS}
+      VM_SCHEDULER_ENABLED: ${VM_SCHEDULER_ENABLED}
+      VM_SCHEDULER_INTERVAL_MS: ${VM_SCHEDULER_INTERVAL_MS}
+      VM_SCHEDULER_BATCH_SIZE: ${VM_SCHEDULER_BATCH_SIZE}
+      API_PUBLIC_URL: ${API_PUBLIC_URL}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL}
+      REMOTE_CONSOLE_TTL_SECONDS: ${REMOTE_CONSOLE_TTL_SECONDS}
+      REMOTE_CONSOLE_RDP_TUNNEL_MODE: ${REMOTE_CONSOLE_RDP_TUNNEL_MODE}
+      REMOTE_CONSOLE_RDP_TUNNEL_PUBLIC_HOST: ${REMOTE_CONSOLE_RDP_TUNNEL_PUBLIC_HOST}
+      REMOTE_CONSOLE_RDP_TUNNEL_PORT_START: ${REMOTE_CONSOLE_RDP_TUNNEL_PORT_START}
+      REMOTE_CONSOLE_RDP_TUNNEL_PORT_END: ${REMOTE_CONSOLE_RDP_TUNNEL_PORT_END}
+      REMOTE_CONSOLE_RDP_TUNNEL_READY_TIMEOUT_MS: ${REMOTE_CONSOLE_RDP_TUNNEL_READY_TIMEOUT_MS}
+      MOCK_VNC_TARGET_HOST: ${MOCK_VNC_TARGET_HOST}
+      MOCK_VNC_TARGET_PORT: ${MOCK_VNC_TARGET_PORT}
+      DEFAULT_VNC_PORT: ${DEFAULT_VNC_PORT}
+      DEFAULT_RDP_PORT: ${DEFAULT_RDP_PORT}
+      LIBVIRT_DEFAULT_URI: ${LIBVIRT_DEFAULT_URI}
+      LIBVIRT_STORAGE_POOL: ${LIBVIRT_STORAGE_POOL}
+      LIBVIRT_DEFAULT_NETWORK: ${LIBVIRT_DEFAULT_NETWORK}
+      LIBVIRT_VM_NAME_PREFIX: ${LIBVIRT_VM_NAME_PREFIX}
+      LIBVIRT_DISK_BUS: ${LIBVIRT_DISK_BUS}
+      LIBVIRT_NIC_MODEL: ${LIBVIRT_NIC_MODEL}
+      LIBVIRT_VNC_LISTEN_ADDRESS: ${LIBVIRT_VNC_LISTEN_ADDRESS}
+      LIBVIRT_VIDEO_MODEL: ${LIBVIRT_VIDEO_MODEL}
+      LIBVIRT_WINDOWS_VIDEO_MODEL: ${LIBVIRT_WINDOWS_VIDEO_MODEL}
+      LIBVIRT_SOUND_MODEL: ${LIBVIRT_SOUND_MODEL}
+      LIBVIRT_VNC_HOST_OVERRIDE: ${LIBVIRT_VNC_HOST_OVERRIDE}
+      LIBVIRT_VNC_HOST_FALLBACK: ${LIBVIRT_VNC_HOST_FALLBACK}
+      LIBVIRT_COMMAND_TIMEOUT_MS: ${LIBVIRT_COMMAND_TIMEOUT_MS}
+      LIBVIRT_ISO_UPLOAD_TIMEOUT_MS: ${LIBVIRT_ISO_UPLOAD_TIMEOUT_MS}
+    ports:
+      - "${API_PORT}:4000"
+      - "${REMOTE_CONSOLE_RDP_TUNNEL_PORT_START}-${REMOTE_CONSOLE_RDP_TUNNEL_PORT_END}:${REMOTE_CONSOLE_RDP_TUNNEL_PORT_START}-${REMOTE_CONSOLE_RDP_TUNNEL_PORT_END}"
+    mem_limit: ${API_MEM_LIMIT}
+    volumes:
+      - hyperdesk-iso-upload:/app/uploads/isos
+      - hyperdesk-api-ssh:/root/.ssh
+
+  mock-vnc:
+    image: dorowu/ubuntu-desktop-lxde-vnc:latest
+    container_name: hyperdesk-mock-vnc
+    restart: unless-stopped
+    mem_limit: ${MOCK_VNC_MEM_LIMIT}
+    environment:
+      VNC_PASSWORD: ${MOCK_VNC_PASSWORD}
+    ports:
+      - "6081:80"
+
+  web:
+    build:
+      context: ./apps/web
+    container_name: hyperdesk-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_OPTIONS: ${WEB_NODE_OPTIONS}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_NOVNC_URL: ${NEXT_PUBLIC_NOVNC_URL}
+      NEXT_PUBLIC_NOVNC_RESIZE_MODE: ${NEXT_PUBLIC_NOVNC_RESIZE_MODE}
+    ports:
+      - "${WEB_PORT}:3000"
+    mem_limit: ${WEB_MEM_LIMIT}
+
+volumes:
+  hyperdesk-postgres:
+  hyperdesk-iso-upload:
+  hyperdesk-api-ssh:

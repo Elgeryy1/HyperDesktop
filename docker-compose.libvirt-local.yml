@@ -1,0 +1,10 @@
+services:
+  api:
+    environment:
+      HYPERVISOR_PROVIDER: libvirt
+      LIBVIRT_DEFAULT_URI: qemu:///system
+      ISO_UPLOAD_DIR: /var/lib/libvirt/images/isos
+    volumes:
+      - /var/run/libvirt:/var/run/libvirt
+      - /var/lib/libvirt/images/isos:/var/lib/libvirt/images/isos
+

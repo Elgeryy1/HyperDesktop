@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  ADMINISTRADOR
+  PROFESOR
+  ALUMNO
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum VmState {
+  PROVISIONING
+  STOPPED
+  STARTING
+  RUNNING
+  STOPPING
+  REBOOTING
+  ERROR
+  DELETING
+  DELETED
+}
+
+enum ExpirationAction {
+  STOP
+  DELETE
+}
+
+enum HypervisorProviderType {
+  MOCK
+  LIBVIRT
+}
+
+enum HypervisorStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+}
+
+enum StoragePoolType {
+  DIR
+  NFS
+  LVM
+  ZFS
+}
+
+enum StoragePoolStatus {
+  READY
+  DEGRADED
+  OFFLINE
+}
+
+enum NetworkType {
+  BRIDGE
+  NAT
+  VLAN
+  INTERNAL
+}
+
+enum AuditActionResult {
+  SUCCESS
+  FAILED
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        RoleName @unique
+  description String
+  isSystem    Boolean  @default(true)
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  name           String
+  passwordHash   String
+  status         UserStatus     @default(ACTIVE)
+  roleId         String
+  role           Role           @relation(fields: [roleId], references: [id])
+  lastLoginAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  virtualMachines VirtualMachine[]
+  createdTemplates Template[]   @relation("TemplateCreatedBy")
+  templateAssignments TemplateAssignment[] @relation("TemplateAssignmentsForStudent")
+  templateAssignmentsCreated TemplateAssignment[] @relation("TemplateAssignmentsByTeacher")
+  uploadedIsos   IsoImage[]
+  groupMembers   GroupMember[]
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String   @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model HypervisorHost {
+  id               String                 @id @default(uuid())
+  name             String                 @unique
+  providerType     HypervisorProviderType
+  connectionUri    String
+  status           HypervisorStatus       @default(ONLINE)
+  cpuCoresTotal    Int
+  memoryMbTotal    Int
+  storageGbTotal   Int
+  lastHeartbeatAt  DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  virtualMachines  VirtualMachine[]
+  storagePools     StoragePool[]
+  networks         Network[]
+}
+
+model VirtualMachine {
+  id                    String           @id @default(uuid())
+  externalId            String?
+  name                  String
+  state                 VmState          @default(PROVISIONING)
+  vcpu                  Int
+  memoryMb              Int
+  diskGb                Int
+  osType                String?
+  ipAddress             String?
+  hostId                String
+  host                  HypervisorHost   @relation(fields: [hostId], references: [id])
+  networkId             String?
+  network               Network?         @relation(fields: [networkId], references: [id])
+  templateId            String?
+  template              Template?        @relation("TemplateForVm", fields: [templateId], references: [id])
+  sourceTemplates       Template[]       @relation("TemplateSourceVm")
+  isoId                 String?
+  iso                   IsoImage?        @relation(fields: [isoId], references: [id])
+  createdById           String
+  createdBy             User             @relation(fields: [createdById], references: [id])
+  autoStopAt            DateTime?
+  expiresAt             DateTime?
+  expirationAction      ExpirationAction @default(STOP)
+  lastAutomatedActionAt DateTime?
+  diskVolumes           DiskVolume[]
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  deletedAt             DateTime?
+
+  @@unique([hostId, externalId])
+  @@index([state, hostId])
+  @@index([autoStopAt, deletedAt])
+  @@index([expiresAt, expirationAction, deletedAt])
+}
+
+model StoragePool {
+  id             String            @id @default(uuid())
+  name           String
+  type           StoragePoolType
+  status         StoragePoolStatus @default(READY)
+  capacityGb     Int
+  usedGb         Int               @default(0)
+  hostId         String
+  host           HypervisorHost    @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  volumes        DiskVolume[]
+  isos           IsoImage[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([hostId, name])
+}
+
+model DiskVolume {
+  id            String      @id @default(uuid())
+  name          String
+  externalId    String?
+  sizeGb        Int
+  format        String      @default("qcow2")
+  storagePoolId String
+  storagePool   StoragePool @relation(fields: [storagePoolId], references: [id], onDelete: Cascade)
+  vmId          String?
+  vm            VirtualMachine? @relation(fields: [vmId], references: [id], onDelete: SetNull)
+  isBoot        Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model IsoImage {
+  id             String      @id @default(uuid())
+  name           String
+  version        String?
+  osFamily       String?
+  checksumSha256 String      @unique
+  sizeBytes      BigInt
+  storagePoolId  String
+  storagePool    StoragePool @relation(fields: [storagePoolId], references: [id], onDelete: Cascade)
+  path           String
+  uploadedById   String
+  uploadedBy     User        @relation(fields: [uploadedById], references: [id])
+  virtualMachines VirtualMachine[]
+  templates      Template[]
+  createdAt      DateTime    @default(now())
+}
+
+model Template {
+  id              String          @id @default(uuid())
+  name            String
+  version         String
+  sourceType      String
+  sourceVmId      String?
+  sourceVm        VirtualMachine? @relation("TemplateSourceVm", fields: [sourceVmId], references: [id], onDelete: SetNull)
+  createdById     String?
+  createdBy       User?           @relation("TemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  isoId           String?
+  iso             IsoImage?       @relation(fields: [isoId], references: [id])
+  defaultVcpu     Int             @default(2)
+  defaultMemoryMb Int             @default(4096)
+  defaultDiskGb   Int             @default(40)
+  cloudInit       Json?
+  virtualMachines VirtualMachine[] @relation("TemplateForVm")
+  assignments     TemplateAssignment[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([name, version])
+  @@index([createdById, createdAt(sort: Desc)])
+}
+
+model TemplateAssignment {
+  id           String   @id @default(uuid())
+  templateId   String
+  template     Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      User     @relation("TemplateAssignmentsForStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  assignedById String
+  assignedBy   User     @relation("TemplateAssignmentsByTeacher", fields: [assignedById], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([templateId, studentId])
+  @@index([studentId, createdAt(sort: Desc)])
+  @@index([assignedById, createdAt(sort: Desc)])
+}
+
+model Network {
+  id              String          @id @default(uuid())
+  name            String
+  type            NetworkType
+  cidr            String
+  gatewayIp       String?
+  vlanId          Int?
+  hostId          String?
+  host            HypervisorHost? @relation(fields: [hostId], references: [id], onDelete: SetNull)
+  virtualMachines VirtualMachine[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([name, hostId])
+}
+
+model AuditLog {
+  id           String            @id @default(uuid())
+  actorUserId  String?
+  actor        User?             @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action       String
+  resourceType String
+  resourceId   String?
+  message      String?
+  result       AuditActionResult @default(SUCCESS)
+  metadata     Json?
+  ipAddress    String?
+  createdAt    DateTime          @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([resourceType, resourceId, createdAt(sort: Desc)])
+}
+
+model Group {
+  id          String        @id @default(uuid())
+  name        String        @unique
+  slug        String        @unique
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  members     GroupMember[]
+}
+
+model GroupMember {
+  id       String   @id @default(uuid())
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
